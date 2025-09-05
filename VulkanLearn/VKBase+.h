@@ -11,7 +11,7 @@ namespace vulkan {
         { VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO };
         std::vector<VkVertexInputBindingDescription> vertexInputBindings;
         std::vector<VkVertexInputAttributeDescription> vertexInputAttributes;
-        //Input Assembly
+        //Input Assembly 
         VkPipelineInputAssemblyStateCreateInfo inputAssemblyStateCi =
         { VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO };
         //Tessellation
