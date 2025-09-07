@@ -3,34 +3,34 @@
 #include <GLFW/glfw3.h>
 #pragma comment(lib, "glfw3.lib")
 
-GLFWwindow* pWindow;
-GLFWmonitor* pMonitor;
-const char* windowTitle = "EasyVK";
+// GLFW窗口
+GLFWwindow* glfwWindow;
 
-bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable = true, bool limitFrameRate = true) {
+
+// 初始化GLFW窗口
+bool InitializeWindow(VkExtent2D size, bool isResizable = true, bool limitFrameRate = true) {
 	using namespace vulkan;
-
+// ---------------------------------------------GLFW----------------------------------------------------------------------
 	if (!glfwInit()) {
 		outStream << std::format("[ InitializeWindow ] ERROR\nFailed to initialize GLFW!\n");
 		return false;
 	}
+	// glfwWindowHint 用于配置窗口的属性   GLFW_NO_API 表示不创建OpenGL上下文	
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	// 禁止調整窗口大小
 	glfwWindowHint(GLFW_RESIZABLE, isResizable);
-	pMonitor = glfwGetPrimaryMonitor();
-	const GLFWvidmode* pMode = glfwGetVideoMode(pMonitor);
-	pWindow = fullScreen ?
-		glfwCreateWindow(pMode->width, pMode->height, windowTitle, pMonitor, nullptr) :
-		glfwCreateWindow(size.width, size.height, windowTitle, nullptr, nullptr);
-	if (!pWindow) {
+	// 创建窗口
+	glfwWindow = glfwCreateWindow(size.width, size.height, "windowTitle", nullptr, nullptr);
+	if (!glfwWindow) {
 		outStream << std::format("[ InitializeWindow ]\nFailed to create a glfw window!\n");
 		glfwTerminate();
 		return false;
 	}
+// ---------------------------------------------GLFW----------------------------------------------------------------------
 
-#ifdef _WIN32
-	graphicsBase::Base().AddInstanceExtension(VK_KHR_SURFACE_EXTENSION_NAME);
-	graphicsBase::Base().AddInstanceExtension(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
-#else
+
+// ---------------------------------------------Vulkan----------------------------------------------------------------------
+	// 通过glfwGetRequiredInstanceExtensions获取需要的拓展,提前收集起来组成vector<char*>,用于vulkan实例创建
 	uint32_t extensionCount = 0;
 	const char** extensionNames;
 	extensionNames = glfwGetRequiredInstanceExtensions(&extensionCount);
@@ -41,43 +41,53 @@ bool InitializeWindow(VkExtent2D size, bool fullScreen = false, bool isResizable
 	}
 	for (size_t i = 0; i < extensionCount; i++)
 		graphicsBase::Base().AddInstanceExtension(extensionNames[i]);
-#endif
+
+	// 在windows电脑可以明确知道需要这两个拓展
+	//graphicsBase::Base().AddInstanceExtension(VK_KHR_SURFACE_EXTENSION_NAME);
+	//graphicsBase::Base().AddInstanceExtension(VK_KHR_WIN32_SURFACE_EXTENSION_NAME);
+
+
+	// 给设备设置拓展 VK_KHR_SWAPCHAIN_EXTENSION_NAME:实现图像呈现（Presentation）到屏幕
 	graphicsBase::Base().AddDeviceExtension(VK_KHR_SWAPCHAIN_EXTENSION_NAME);
-
 	graphicsBase::Base().UseLatestApiVersion();
-	if (graphicsBase::Base().CreateInstance())
-		return false;
 
+	// 创建vulkan实例
+	if (graphicsBase::Base().CreateInstance())
+		return false;		
+
+	// 创建实例后,必须马上创建surface,因为他会影响后续的设备选择
 	VkSurfaceKHR surface = VK_NULL_HANDLE;
-	if (VkResult result = glfwCreateWindowSurface(vulkan::graphicsBase::Base().Instance(), pWindow, nullptr, &surface)) {
+	// glfw已经集成了跨平台的surface创建函数
+	if (VkResult result = glfwCreateWindowSurface(vulkan::graphicsBase::Base().Instance(), glfwWindow, nullptr, &surface)) {
 		outStream << std::format("[ InitializeWindow ] ERROR\nFailed to create a window surface!\nError code: {}\n", int32_t(result));
 		glfwTerminate();
 		return false;
 	}
 	graphicsBase::Base().Surface(surface);
 
+	// 1. 获取可用设备  2. 检查该设备是否支持各种队列家族  3. 用选好的物理设备创建虚拟设备
 	if (vulkan::graphicsBase::Base().GetPhysicalDevices() ||
 		vulkan::graphicsBase::Base().DeterminePhysicalDevice(0, true, false) ||
 		vulkan::graphicsBase::Base().CreateDevice())
 		return false;
 
+	// 创建交换链
 	if (graphicsBase::Base().CreateSwapchain(limitFrameRate))
 		return false;
+// ---------------------------------------------Vulkan----------------------------------------------------------------------
 
 	return true;
 }
 void TerminateWindow() {
 	vulkan::graphicsBase::Base().WaitIdle();
 	glfwTerminate();
+	glfwDestroyWindow(glfwWindow);
 }
-void MakeWindowFullScreen() {
-	const GLFWvidmode* pMode = glfwGetVideoMode(pMonitor);
-	glfwSetWindowMonitor(pWindow, pMonitor, 0, 0, pMode->width, pMode->height, pMode->refreshRate);
-}
-void MakeWindowWindowed(VkOffset2D position, VkExtent2D size) {
-	const GLFWvidmode* pMode = glfwGetVideoMode(pMonitor);
-	glfwSetWindowMonitor(pWindow, nullptr, position.x, position.y, size.width, size.height, pMode->refreshRate);
-}
+
+
+
+
+// 在窗口标题显示FPS
 void TitleFps() {
 	static double time0 = glfwGetTime();
 	static double time1;
@@ -88,8 +98,8 @@ void TitleFps() {
 	dframe++;
 	if ((dt = time1 - time0) >= 1) {
 		info.precision(1);
-		info << windowTitle << "    " << std::fixed << dframe / dt << " FPS";
-		glfwSetWindowTitle(pWindow, info.str().c_str());
+		info << "windowTitle" << "    " << std::fixed << dframe / dt << " FPS";
+		glfwSetWindowTitle(glfwWindow, info.str().c_str());
 		info.str("");
 		time0 = time1;
 		dframe = 0;

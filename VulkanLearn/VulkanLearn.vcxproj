@@ -152,6 +152,10 @@
     <ClInclude Include="VKBase+.h" />
     <ClInclude Include="VKBase.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shader\complie.bat" />
+    <None Include="REAMDME.md" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
   </ImportGroup>

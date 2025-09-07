@@ -36,4 +36,10 @@
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>
+  <ItemGroup>
+    <None Include="shader\complie.bat">
+      <Filter>源文件</Filter>
+    </None>
+    <None Include="REAMDME.md" />
+  </ItemGroup>
 </Project>

@@ -51,6 +51,7 @@ namespace vulkan {
 	using result_t = VkResult;
 #endif
 
+	// 用于管理Vulkan中那些最基础的对象和行为
 	class graphicsBase {
 		struct procedureAddress {
 			PFN_vkVoidFunction value;
@@ -61,7 +62,7 @@ namespace vulkan {
 		};
 
 		uint32_t apiVersion = VK_API_VERSION_1_0;
-		VkInstance instance;
+		VkInstance instance;  // vulkan实例   创建它是初始化Vulkan的第一步
 		VkPhysicalDevice physicalDevice;
 		VkPhysicalDeviceProperties physicalDeviceProperties;
 		VkPhysicalDeviceMemoryProperties physicalDeviceMemoryProperties;
@@ -125,29 +126,34 @@ namespace vulkan {
 		}
 		//Non-const Function
 		result_t CreateSwapchain_Internal() {
+			// 真正创建交换链
 			if (VkResult result = vkCreateSwapchainKHR(device, &swapchainCreateInfo, nullptr, &swapchain)) {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to create a swapchain!\nError code: {}\n", int32_t(result));
 				return result;
 			}
 
+			// 获取交换链的缓冲区数量
 			uint32_t swapchainImageCount;
 			if (VkResult result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, nullptr)) {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to get the count of swapchain images!\nError code: {}\n", int32_t(result));
 				return result;
 			}
+
+			// swapchainImages存储缓冲区的句柄(句柄可用是指针也可以是id,例如GLuint,需要通过API来使用,而不是直接访问内存)
 			swapchainImages.resize(swapchainImageCount);
 			if (VkResult result = vkGetSwapchainImagesKHR(device, swapchain, &swapchainImageCount, swapchainImages.data())) {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to get swapchain images!\nError code: {}\n", int32_t(result));
 				return result;
 			}
 
+			// 为swapchainImages创建ImageView
 			swapchainImageViews.resize(swapchainImageCount);
 			VkImageViewCreateInfo imageViewCreateInfo = {
 				.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-				.viewType = VK_IMAGE_VIEW_TYPE_2D,
-				.format = swapchainCreateInfo.imageFormat,
-				//.components = {},
-				.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 }
+				.viewType = VK_IMAGE_VIEW_TYPE_2D,   // 2D图片类型
+				.format = swapchainCreateInfo.imageFormat, // 图像格式，与交换链一致
+				//.components = {},  // 默认就是 identity mapping（R→R，G→G，B→B，A→A），所以可以不设置。
+				.subresourceRange = { VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1 } // 设置访问颜色通道 Mipmap 层 0 数组层 0,且都是只访问一层
 			};
 			for (size_t i = 0; i < swapchainImageCount; i++) {
 				imageViewCreateInfo.image = swapchainImages[i];
@@ -207,6 +213,8 @@ namespace vulkan {
 			queueFamilyIndex_compute = ic;
 			return VK_SUCCESS;
 		}
+
+		// 配合AddInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME)来进行消息回调
 		result_t CreateDebugMessenger() {
 			static PFN_vkDebugUtilsMessengerCallbackEXT DebugUtilsMessengerCallback = [](
 				VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
@@ -357,7 +365,7 @@ namespace vulkan {
 		void AddCallback_DestroyDevice(void(*function)()) {
 			callbacks_destroyDevice.push_back(function);
 		}
-		//                    Create Instance
+		//Create Instance
 		void AddInstanceLayer(const char* layerName) {
 			AddLayerOrExtension(instanceLayers, layerName);
 		}
@@ -369,23 +377,52 @@ namespace vulkan {
 				return vkEnumerateInstanceVersion(&apiVersion);
 			return VK_SUCCESS;
 		}
+
+		// 创建Vulkan实例
 		result_t CreateInstance(VkInstanceCreateFlags flags = 0) {
 			if constexpr (ENABLE_DEBUG_MESSENGER)
-				AddInstanceLayer("VK_LAYER_KHRONOS_validation"),
-				AddInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+				AddInstanceLayer("VK_LAYER_KHRONOS_validation"),  // 启用验证层
+				AddInstanceExtension(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);  // 启用调试扩展 让验证层的输出可以进行回调,没有这个拓展层,这个验证层的输出只能打印到控制台
+			/**
+			typedef struct VkApplicationInfo {
+				VkStructureType    sType;  // 结构体类型标识，必须是 VK_STRUCTURE_TYPE_APPLICATION_INFO。Vulkan 用它来识别结构体类型。
+				const void*        pNext; // 指向扩展结构体的指针，如果没有扩展则设为 nullptr。Vulkan 允许通过 pNext 链接额外信息。
+				const char*        pApplicationName; // 自定义
+				uint32_t           applicationVersion; // 应用版本,固定写法，通常使用宏 VK_MAKE_VERSION(major, minor, patch) 构建， 
+				const char*        pEngineName;  // 自定义
+				uint32_t           engineVersion; // 自定义
+				uint32_t           apiVersion;  // 用于告诉驱动你想使用哪个 Vulkan 版本。
+			}VkApplicationInfo;
+			**/// 提供Vulkan应用信息  (这个结构体只是提供信息给 Vulkan 驱动，并 不会直接影响渲染功能，主要用于优化、日志和调试。)
 			VkApplicationInfo applicatianInfo = {
 				.sType = VK_STRUCTURE_TYPE_APPLICATION_INFO,
 				.apiVersion = apiVersion
 			};
+
+			/**
+			VkInstanceCreateInfo 是必须的
+			
+			typedef struct VkInstanceCreateInfo {
+				VkStructureType             sType;                   // 结构类型标识，必须设为 VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO
+				const void*                 pNext;                   // 指向扩展结构的指针，通常为 NULL
+				VkInstanceCreateFlags       flags;                   // 保留参数，目前几乎不用，通常填 0
+				const VkApplicationInfo*    pApplicationInfo;       // 指向 VkApplicationInfo，提供应用程序和引擎信息（可选）
+				uint32_t                    enabledLayerCount;      // 启用的验证层数量
+				const char* const*          ppEnabledLayerNames;    // 验证层名称数组
+				uint32_t                    enabledExtensionCount;  // 启用的扩展数量
+				const char* const*          ppEnabledExtensionNames;// 扩展名称数组
+			} VkInstanceCreateInfo;
+			**/
 			VkInstanceCreateInfo instanceCreateInfo = {
 				.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
 				.flags = flags,
 				.pApplicationInfo = &applicatianInfo,
-				.enabledLayerCount = uint32_t(instanceLayers.size()),
-				.ppEnabledLayerNames = instanceLayers.data(),
+				.enabledLayerCount = uint32_t(instanceLayers.size()), 
+				.ppEnabledLayerNames = instanceLayers.data(),    // 指定验证层
 				.enabledExtensionCount = uint32_t(instanceExtensions.size()),
-				.ppEnabledExtensionNames = instanceExtensions.data()
+				.ppEnabledExtensionNames = instanceExtensions.data() // 指定扩展层
 			};
+			// 创建实例  VkResult  vk函数都会返回这个,=0才表示成功
 			if (VkResult result = vkCreateInstance(&instanceCreateInfo, nullptr, &instance)) {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to create a vulkan instance!\nError code: {}\n", int32_t(result));
 				return result;
@@ -395,9 +432,22 @@ namespace vulkan {
 				VK_VERSION_MAJOR(apiVersion),
 				VK_VERSION_MINOR(apiVersion),
 				VK_VERSION_PATCH(apiVersion));
+
 			if constexpr (ENABLE_DEBUG_MESSENGER)
+				// 设置验证层回调
 				CreateDebugMessenger();
 			return VK_SUCCESS;
+		}
+		void printAllAvaliableExtensions() {
+			uint32_t extensionCount = 0;
+			vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
+			std::vector<VkExtensionProperties> extensions(extensionCount);
+			vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
+			std::cout << "available extensions:\n";
+
+			for (const auto& extension : extensions) {
+				std::cout << '\t' << extension.extensionName << '\n';
+			}
 		}
 		result_t CheckInstanceLayers(arrayRef<const char*> layersToCheck) const {
 			uint32_t layerCount;
@@ -465,30 +515,36 @@ namespace vulkan {
 		void InstanceExtensions(const std::vector<const char*>& extensionNames) {
 			instanceExtensions = extensionNames;
 		}
-		//                    Set Window Surface
+		//  Set Window Surface
 		void Surface(VkSurfaceKHR surface) {
 			if (!this->surface)
 				this->surface = surface;
 		}
-		//                    Create Logical Device
+		// Create Logical Device
 		void AddDeviceExtension(const char* extensionName) {
 			AddLayerOrExtension(deviceExtensions, extensionName);
 		}
+
+		// 查询硬件有多少可用用于Vulkan渲染,存储所有可用的硬件,显卡和CPU都会被存储
 		result_t GetPhysicalDevices() {
 			uint32_t deviceCount;
 			if (VkResult result = vkEnumeratePhysicalDevices(instance, &deviceCount, nullptr)) {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to get the count of physical devices!\nError code: {}\n", int32_t(result));
 				return result;
 			}
+			outStream << std::format("Found {} physical device(s) that support vulkan.\n", deviceCount);
 			if (!deviceCount)
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to find any physical device supports vulkan!\n"),
 				abort();
+			// 这里必须用resize,resize会把申请的空间都塞满,下一行代码会通过头指针把整个vector都塞满  // TODO:resize的使用场景找到了~
 			availablePhysicalDevices.resize(deviceCount);
 			VkResult result = vkEnumeratePhysicalDevices(instance, &deviceCount, availablePhysicalDevices.data());
 			if (result)
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to enumerate physical devices!\nError code: {}\n", int32_t(result));
 			return result;
 		}
+		
+		// deviceIndex表示选择哪一块设备,后边是是否需要支持这两个队列,如果可用,就把他设置为physicalDevice
 		result_t DeterminePhysicalDevice(uint32_t deviceIndex = 0, bool enableGraphicsQueue = true, bool enableComputeQueue = true) {
 			static constexpr uint32_t notFound = INT32_MAX;//== VK_QUEUE_FAMILY_IGNORED & INT32_MAX
 			struct queueFamilyIndexCombination {
@@ -528,7 +584,10 @@ namespace vulkan {
 			return VK_SUCCESS;
 		}
 		result_t CreateDevice(VkDeviceCreateFlags flags = 0) {
+			// 使用Vulkan，您可以为队列分配优先级，以通过0.0和1.0之间的浮点数影响命令缓冲区执行的调度。即使只有一个队列，也需要此功能
 			float queuePriority = 1.f;
+
+			// 配置创建设备需要的Info结构体,这里设置了队列只有一个还要优先级
 			VkDeviceQueueCreateInfo queueCreateInfos[3] = {
 				{
 					.sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
@@ -543,6 +602,7 @@ namespace vulkan {
 					.queueCount = 1,
 					.pQueuePriorities = &queuePriority } };
 			uint32_t queueCreateInfoCount = 0;
+			// 对于三种队列家族,如果设备需要,就需要设置一份队列索引信息
 			if (queueFamilyIndex_graphics != VK_QUEUE_FAMILY_IGNORED)
 				queueCreateInfos[queueCreateInfoCount++].queueFamilyIndex = queueFamilyIndex_graphics;
 			if (queueFamilyIndex_presentation != VK_QUEUE_FAMILY_IGNORED &&
@@ -552,8 +612,12 @@ namespace vulkan {
 				queueFamilyIndex_compute != queueFamilyIndex_graphics &&
 				queueFamilyIndex_compute != queueFamilyIndex_presentation)
 				queueCreateInfos[queueCreateInfoCount++].queueFamilyIndex = queueFamilyIndex_compute;
+
+			// 查询设备支持那些功能,比如 几何着色器,细分着色器,各向异性采样,宽线渲染...... vulkan太底层了,什么都要考虑
 			VkPhysicalDeviceFeatures physicalDeviceFeatures;
 			vkGetPhysicalDeviceFeatures(physicalDevice, &physicalDeviceFeatures);
+
+			// 组成创建信息
 			VkDeviceCreateInfo deviceCreateInfo = {
 				.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
 				.flags = flags,
@@ -563,10 +627,14 @@ namespace vulkan {
 				.ppEnabledExtensionNames = deviceExtensions.data(),
 				.pEnabledFeatures = &physicalDeviceFeatures
 			};
+
+			// 创建设备
 			if (VkResult result = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &device)) {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to create a vulkan logical device!\nError code: {}\n", int32_t(result));
 				return result;
 			}
+
+			// 保存创建好的队列信息
 			if (queueFamilyIndex_graphics != VK_QUEUE_FAMILY_IGNORED)
 				vkGetDeviceQueue(device, queueFamilyIndex_graphics, 0, &queue_graphics);
 			if (queueFamilyIndex_presentation != VK_QUEUE_FAMILY_IGNORED)
@@ -613,7 +681,7 @@ namespace vulkan {
 		void DeviceExtensions(const std::vector<const char*>& extensionNames) {
 			deviceExtensions = extensionNames;
 		}
-		//                    Create Swapchain
+		// Create Swapchain
 		result_t GetSurfaceFormats() {
 			uint32_t surfaceFormatCount;
 			if (VkResult result = vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatCount, nullptr)) {
@@ -662,18 +730,20 @@ namespace vulkan {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to get physical device surface capabilities!\nError code: {}\n", int32_t(result));
 				return result;
 			}
-			//Set image count
+			// 设置缓冲区数量,类比OpenGL的双缓冲
 			swapchainCreateInfo.minImageCount = surfaceCapabilities.minImageCount + (surfaceCapabilities.maxImageCount > surfaceCapabilities.minImageCount);
-			//Set image extent
+			std::cout << "缓冲区设置:" << swapchainCreateInfo.minImageCount << std::endl;
+			// 设置画布尺寸,尺寸被创建的surface的支持尺寸限制
 			swapchainCreateInfo.imageExtent =
 				surfaceCapabilities.currentExtent.width == -1 ?
 				VkExtent2D{
 				glm::clamp(defaultWindowSize.width, surfaceCapabilities.minImageExtent.width, surfaceCapabilities.maxImageExtent.width),
 				glm::clamp(defaultWindowSize.height, surfaceCapabilities.minImageExtent.height, surfaceCapabilities.maxImageExtent.height) } :
 				surfaceCapabilities.currentExtent;
-			//Set transformation
+			// Swapchain 图像在显示前需要进行的变换 比如 旋转 90°/ 180°/ 270°/水平或垂直镜像
 			swapchainCreateInfo.preTransform = surfaceCapabilities.currentTransform;
-			//Set alpha compositing mode
+
+			// Swapchain 的每张图像在显示器上呈现时，可能需要和 系统桌面背景或其他窗口进行透明混合
 			if (surfaceCapabilities.supportedCompositeAlpha & VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR)
 				swapchainCreateInfo.compositeAlpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
 			else
@@ -682,7 +752,7 @@ namespace vulkan {
 						swapchainCreateInfo.compositeAlpha = VkCompositeAlphaFlagBitsKHR(surfaceCapabilities.supportedCompositeAlpha & 1 << i);
 						break;
 					}
-			//Set image usage
+			// 设置图形的用途 渲染目标（Render Target）/ 拷贝源 / 拷贝目标
 			swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 			if (surfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)
 				swapchainCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
@@ -691,7 +761,7 @@ namespace vulkan {
 			else
 				outStream << std::format("[ graphicsBase ] WARNING\nVK_IMAGE_USAGE_TRANSFER_DST_BIT isn't supported!\n");
 
-			//Get surface formats
+			// 图像的像素格式 (RGBA还是 BGRA) 和色彩空间 (sRGB)
 			if (!availableSurfaceFormats.size())
 				if (VkResult result = GetSurfaceFormats())
 					return result;
@@ -704,7 +774,7 @@ namespace vulkan {
 					outStream << std::format("[ graphicsBase ] WARNING\nFailed to select a four-component UNORM surface format!\n");
 				}
 
-			//Get surface present modes
+			//设置 present modes 队列模式/三缓冲模式/立即模式/放宽 FIFO
 			uint32_t surfacePresentModeCount;
 			if (VkResult result = vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &surfacePresentModeCount, nullptr)) {
 				outStream << std::format("[ graphicsBase ] ERROR\nFailed to get the count of surface present modes!\nError code: {}\n", int32_t(result));
@@ -734,13 +804,14 @@ namespace vulkan {
 			swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
 			swapchainCreateInfo.clipped = VK_TRUE;
 
+			// 创建交换链,imageViews
 			if (VkResult result = CreateSwapchain_Internal())
 				return result;
 			ExecuteCallbacks(callbacks_createSwapchain);
 			return VK_SUCCESS;
 		}
 
-		//                    After Initialization
+		//After Initialization
 		void Terminate() {
 			this->~graphicsBase();
 			instance = VK_NULL_HANDLE;
@@ -1042,7 +1113,7 @@ namespace vulkan {
 		//Getter
 		DefineHandleTypeOperator;
 		DefineAddressFunction;
-		//Const Function
+		//Const Function 设置着色器代码绑定信息,还可以设置入口点,默认是main
 		VkPipelineShaderStageCreateInfo StageCreateInfo(VkShaderStageFlagBits stage, const char* entry = "main") const {
 			return {
 				VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,//sType
@@ -1051,7 +1122,7 @@ namespace vulkan {
 				stage,                                              //stage
 				handle,                                             //module
 				entry,                                              //pName
-				nullptr                                             //pSpecializationInfo
+				nullptr                                             //pSpecializationInfo  这个东西可以设置shader中的一些常量值
 			};
 		}
 		//Non-const Function
