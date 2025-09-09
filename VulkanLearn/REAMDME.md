@@ -35,6 +35,26 @@
 	- 创建命令池
 	- 分配命令缓冲区
 
+
+# 渲染流程
+1. vkBeginCommandBuffer 表明开始记录命令，设置命令缓冲区的使用标志（一次性提交、重复使用等）。
+2. vkCmdBeginRenderPass 开始一个渲染通道，指定帧缓冲区、渲染区域和清除值。
+3. vkCmdBindPipeline 绑定图形管线，设置渲染状态和着色器。
+4. vkCmdSetViewport 和 vkCmdSetScissor 设置视口和裁剪矩形（如果是动态状态）。
+5. vkCmdDraw 
+6. vkCmdEndRenderPass 结束渲染通道。
+7. vkEndCommandBuffer 完成命令记录，命令缓冲区准备好提交执行。
+8. vkQueueSubmit 提交命令缓冲区到图形队列，等待 GPU 执行。
+9. vkQueuePresentKHR 将渲染结果呈现到屏幕，通过交换链交换图像。
+10. 同步操作，确保渲染完成后再进行下一帧的渲染。
+
+# 同步机制
+Semaphores：PV操作 用于队列间同步
+Fences：CPU-GPU同步 CPU等待GPU完成某个操作
+
+
+
+
 # 一些概念
 	- 验证层:Vulkan API的设计理念是追求最小化驱动程序开销，这一目标的体现之一就是默认情况下API中的错误检查功能极其有限。即便是像将枚举值设置为错误数值或向必填参数传递空指针这样简单的错误，通常也不会被明确处理.验证层是可选组件，通过对接入Vulkan函数调用来应用额外操作。
 	- 拓展层:Vulkan的功能可以通过加载拓展来增强。拓展可以为现有的Vulkan对象添加新功能，或者引入全新的对象类型。与验证层类似，拓展也是通过拦截Vulkan函数调用来实现的。

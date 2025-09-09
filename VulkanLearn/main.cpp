@@ -58,12 +58,16 @@ int main() {
 	CreateLayout();
 	CreatePipeline();
 
+	// 同步GPU与CPU的工具
 	fence fence;
-	semaphore semaphore_imageIsAvailable;
-	semaphore semaphore_renderingIsOver;
+
+	// 同步GPU各个阶段的工具
+	semaphore semaphore_imageIsAvailable; // 图像可用的信号
+	semaphore semaphore_renderingIsOver;  // 渲染完成的信号
 
 	// 命令缓冲区设置
 	commandBuffer commandBuffer;
+	// Command pools创建
 	commandPool commandPool(graphicsBase::Base().QueueFamilyIndex_Graphics(), VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
 	commandPool.AllocateBuffers(commandBuffer);
 
@@ -73,25 +77,36 @@ int main() {
 
 	// Main loop
 	while (!glfwWindowShouldClose(glfwWindow)) {
+		//  窗口最小化（图标化）场景的优化逻辑
 		while (glfwGetWindowAttrib(glfwWindow, GLFW_ICONIFIED))
 			glfwWaitEvents();
 
 		graphicsBase::Base().SwapImage(semaphore_imageIsAvailable);
 		auto i = graphicsBase::Base().CurrentImageIndex();
-
+		
+		// 表示开始记录命令缓冲区
 		commandBuffer.Begin(VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT);
+		// 设置渲染通道
 		renderPass.CmdBegin(commandBuffer, framebuffers[i], { {}, windowSize }, clearColor);
+		// 绑定图形管线 还有另一种管线类型 VK_PIPELINE_BIND_POINT_COMPUTE
 		vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipeline_triangle);
+		// 实际的渲染命令，3个顶点，1个实例，从顶点0开始，从实例0开始
 		vkCmdDraw(commandBuffer, 3, 1, 0, 0);
+		// 结束渲染通道
 		renderPass.CmdEnd(commandBuffer);
+		// 结束命令缓冲区的记录
 		commandBuffer.End();
 
+		// 提交命令缓冲区到图形队列执行，并通过fence同步CPU与GPU，通过semaphore_renderingIsOver告知可以呈现了
 		graphicsBase::Base().SubmitCommandBuffer_Graphics(commandBuffer, semaphore_imageIsAvailable, semaphore_renderingIsOver, fence);
+
+		// 渲染完成信号告知交换链可以呈现了
 		graphicsBase::Base().PresentImage(semaphore_renderingIsOver);
 
 		glfwPollEvents();
 		TitleFps();
 
+		// cpu等待gpu完成渲染工作
 		fence.WaitAndReset();
 	}
 	TerminateWindow();
