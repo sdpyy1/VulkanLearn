@@ -146,13 +146,6 @@
     <ClCompile Include="main.cpp" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="EasyVKStart.h" />
-    <ClInclude Include="EasyVulkan.hpp" />
-    <ClInclude Include="GlfwGeneral.hpp" />
-    <ClInclude Include="VKBase+.h" />
-    <ClInclude Include="VKBase.h" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="shader\complie.bat" />
     <None Include="REAMDME.md" />
   </ItemGroup>
