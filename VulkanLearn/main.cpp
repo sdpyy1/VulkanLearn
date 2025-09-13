@@ -231,27 +231,30 @@ private:
         vkFreeCommandBuffers(device, commandPool, 1, &commandBuffer);
     }
     void initVulkan() {
-        createInstance();
-        setupDebugMessenger();
-        createSurface();
-        pickPhysicalDevice();
-        createLogicalDevice();
-        createSwapChain();
-        createImageViews();
-        createRenderPass();
+        createInstance(); // Vulkan实例
+		setupDebugMessenger(); // 调试
+		createSurface(); // 创建窗口表面
+		pickPhysicalDevice(); // 选择物理设备
+		createLogicalDevice(); // 创建逻辑设备
+		createSwapChain(); // 创建交换链，并获取交换链图像对象vkImage
+		createImageViews(); // 为交换链图像创建图像视图
+		createRenderPass(); // 设置渲染过程，比如延迟渲染管线的流程设置，设置Pass的颜色、深度附件
         createDescriptorSetLayout();
-        createGraphicsPipeline();
-        createFramebuffers();
-        createCommandPool();
-        createTextureImage();
-        createTextureImageView();
-        createTextureSampler();
+		createGraphicsPipeline(); // 创建图形管线
+		createFramebuffers(); // 交换链的每一个缓冲区都需要设置一个帧缓冲
+		createCommandPool(); // 创建命令池
 
-        createVertexBuffer();
-        createIndexBuffer();
-        createUniformBuffers();
-        createDescriptorPool();
-        createDescriptorSets();
+		// 到这里为止，已经完成了Vulkan的初始化工作
+
+        // 一些资源的创建流程
+        createTextureImage();  // 纹理装载到GPU
+		createTextureImageView(); // 为纹理图像创建图像视图
+        createTextureSampler(); // 设置采样器
+		createVertexBuffer(); // 创建顶点缓冲
+		createIndexBuffer(); // 索引缓冲
+		createUniformBuffers(); // 创建UBO缓冲
+		createDescriptorPool(); // 创建描述符池
+		createDescriptorSets(); // 创建描述符集
         createCommandBuffers();
         createSyncObjects();
     }
@@ -753,7 +756,7 @@ private:
 
         vkGetSwapchainImagesKHR(device, swapChain, &imageCount, nullptr);
         swapChainImages.resize(imageCount);
-        vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data());
+		vkGetSwapchainImagesKHR(device, swapChain, &imageCount, swapChainImages.data()); // 创建完交换链后获取交换链图像
 
         swapChainImageFormat = surfaceFormat.format;
         swapChainExtent = extent;
@@ -978,6 +981,7 @@ private:
         VkCommandBufferBeginInfo beginInfo{};
         beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
+		// 开始记录命令
         if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
             throw std::runtime_error("failed to begin recording command buffer!");
         }
@@ -1019,7 +1023,6 @@ private:
         vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, pipelineLayout, 0, 1, &descriptorSets[currentFrame], 0, nullptr);
         vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(indices.size()), 1, 0, 0, 0);
 
-
         vkCmdEndRenderPass(commandBuffer);
 
         if (vkEndCommandBuffer(commandBuffer) != VK_SUCCESS) {
@@ -1037,7 +1040,7 @@ private:
 
         VkFenceCreateInfo fenceInfo{};
         fenceInfo.sType = VK_STRUCTURE_TYPE_FENCE_CREATE_INFO;
-        fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
+		fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT; // 设置初始状态为信号态，用于跳过第一次等待
 
         for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
             if (vkCreateSemaphore(device, &semaphoreInfo, nullptr, &imageAvailableSemaphores[i]) != VK_SUCCESS ||
@@ -1049,8 +1052,10 @@ private:
     }
 
     void drawFrame() {
+        // 等待上一帧命令缓冲区执行完毕，否则会阻塞（帧数在一轮后会++，实际上这里并不是阻塞上一帧的渲染，而是上上帧的渲染完成）
         vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
 
+		// 获取交换链中的下一张图片索引（本帧需要渲染的图片索引）  因为在创建交换链时指定了是3张，所以这里会循环使用0、1、2
         uint32_t imageIndex;
         VkResult result = vkAcquireNextImageKHR(device, swapChain, UINT64_MAX, imageAvailableSemaphores[currentFrame], VK_NULL_HANDLE, &imageIndex);
 
@@ -1062,20 +1067,26 @@ private:
             throw std::runtime_error("failed to acquire swap chain image!");
         }
 
+        // 更新MVP矩阵，它存储在UniformBuffer
         updateUniformBuffer(currentFrame);
 
+		// 重置Fence为未信号态，否则CommandBuffer提交指令会失败
         vkResetFences(device, 1, &inFlightFences[currentFrame]);
 
+        // 重置命令缓存
         vkResetCommandBuffer(commandBuffers[currentFrame], /*VkCommandBufferResetFlagBits*/ 0);
+		// 记录命令缓冲区（渲染流程记录）
         recordCommandBuffer(commandBuffers[currentFrame], imageIndex);
 
+
+		// 提交前指定了 这次提交需要等到的信号量和会发送的信号量
         VkSubmitInfo submitInfo{};
         submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
         VkSemaphore waitSemaphores[] = { imageAvailableSemaphores[currentFrame] };
         VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
         submitInfo.waitSemaphoreCount = 1;
-        submitInfo.pWaitSemaphores = waitSemaphores;
+		submitInfo.pWaitSemaphores = waitSemaphores; // 指定等待的信号量（等待图像可用信号量）
         submitInfo.pWaitDstStageMask = waitStages;
 
         submitInfo.commandBufferCount = 1;
@@ -1083,24 +1094,22 @@ private:
 
         VkSemaphore signalSemaphores[] = { renderFinishedSemaphores[currentFrame] };
         submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores = signalSemaphores;
+		submitInfo.pSignalSemaphores = signalSemaphores; // 指定渲染结束后要发送的信号量（渲染完成信号量）
 
+		// 提交命令缓冲区给图形队列执行，并在执行完毕后通过Fence通知CPU
         if (vkQueueSubmit(graphicsQueue, 1, &submitInfo, inFlightFences[currentFrame]) != VK_SUCCESS) {
             throw std::runtime_error("failed to submit draw command buffer!");
         }
 
+        // 呈现图片
         VkPresentInfoKHR presentInfo{};
         presentInfo.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
-
         presentInfo.waitSemaphoreCount = 1;
         presentInfo.pWaitSemaphores = signalSemaphores;
-
         VkSwapchainKHR swapChains[] = { swapChain };
         presentInfo.swapchainCount = 1;
         presentInfo.pSwapchains = swapChains;
-
         presentInfo.pImageIndices = &imageIndex;
-
         result = vkQueuePresentKHR(presentQueue, &presentInfo);
 
         if (result == VK_ERROR_OUT_OF_DATE_KHR || result == VK_SUBOPTIMAL_KHR || framebufferResized) {
